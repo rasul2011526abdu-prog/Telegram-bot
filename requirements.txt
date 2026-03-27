@@ -10,3 +10,5 @@ apscheduler==3.10.4
 loguru==0.7.2
 emoji==2.12.1
 aiofiles==23.2.1
+aiogram
+better-profanity
