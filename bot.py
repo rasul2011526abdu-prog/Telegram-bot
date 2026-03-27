@@ -13,7 +13,7 @@ if not TOKEN:
 
 # Настройка мата
 profanity.load_censor_words()
-russian_profanity = ["хуй", "пизда", "бля", "ебать", "сука", "мудак", "пидор"]
+russian_profanity = ["хуй", "пизда", "бля", "ебать", "сука", "мудак", "пидор", "пидораз", "хуесос", ]
 profanity.add_censor_words(russian_profanity)
 
 # Разрешенные ссылки
