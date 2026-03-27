@@ -1,84 +1,69 @@
-"""
-PipBot — Умный модератор для Telegram
-Точка входа: bot.py
-"""
 import asyncio
-from aiogram import Bot, Dispatcher
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
-from aiogram.fsm.storage.memory import MemoryStorage
+import os
+import re
+import logging
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from better_profanity import profanity
 
-from config import config
-from database.models import init_db
-from middlewares import GroupMiddleware, AntiSpamMiddleware
-from handlers import start, admin, welcome, messages, settings
-from utils.scheduler import setup_scheduler
-from utils.logger import log
+# Токен
+TOKEN = os.environ.get('BOT_TOKEN')
+if not TOKEN:
+    raise ValueError("BOT_TOKEN not set")
 
+# Настройка мата
+profanity.load_censor_words()
+russian_profanity = ["хуй", "пизда", "бля", "ебать", "сука", "мудак", "пидор"]
+profanity.add_censor_words(russian_profanity)
+
+# Разрешённые ссылки
+ALLOWED_DOMAINS = ["t.me", "telegram.me", "youtube.com", "youtu.be"]
+
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+def has_forbidden_link(text: str) -> bool:
+    urls = re.findall(r'(https?://[^\s]+|www\.[^\s]+)', text)
+    for url in urls:
+        allowed = False
+        for domain in ALLOWED_DOMAINS:
+            if domain in url:
+                allowed = True
+                break
+        if not allowed:
+            return True
+    return False
+
+@dp.message()
+async def filter_message(message: types.Message):
+    if not message.text or message.from_user.id == bot.id:
+        return
+    
+    text = message.text.lower()
+    
+    if profanity.contains_profanity(text):
+        await message.delete()
+        await message.reply("❌ Мат запрещён!")
+        return
+    
+    if has_forbidden_link(text):
+        await message.delete()
+        await message.reply("❌ Ссылки запрещены!")
+        return
+
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    await message.reply("🐍 PipBot запущен! Добавьте меня в группу и дайте права администратора.")
+
+@dp.message(Command("help"))
+async def help_cmd(message: types.Message):
+    await message.reply("📝 Бот удаляет мат и ссылки. /start - меню")
 
 async def main():
-    log.info("🐍 Starting PipBot...")
+    print("🤖 PipBot запущен!")
+    await dp.start_polling(bot)
 
-    await init_db()
-    log.info("✅ Database initialized")
-
-    bot = Bot(
-        token=config.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
-
-    dp = Dispatcher(storage=MemoryStorage())
-
-    # Middlewares
-    dp.message.middleware(GroupMiddleware())
-    dp.callback_query.middleware(GroupMiddleware())
-    dp.message.middleware(AntiSpamMiddleware())
-
-    # Routers
-    dp.include_router(start.router)
-    dp.include_router(admin.router)
-    dp.include_router(welcome.router)
-    dp.include_router(settings.router)
-    dp.include_router(messages.router)
-
-    # Scheduler
-    scheduler = setup_scheduler(bot)
-    scheduler.start()
-    log.info("✅ Scheduler started")
-
-    # Bot commands
-    from aiogram.types import BotCommand
-    await bot.set_my_commands([
-        BotCommand(command="start", description="Главное меню"),
-        BotCommand(command="help", description="Помощь"),
-        BotCommand(command="rules", description="Правила группы"),
-        BotCommand(command="myprofile", description="Мой профиль"),
-        BotCommand(command="shop", description="Магазин Pips 💰"),
-        BotCommand(command="report", description="Пожаловаться (ответом на сообщение)"),
-        BotCommand(command="warn", description="[Админ] Предупреждение"),
-        BotCommand(command="unwarn", description="[Админ] Снять предупреждение"),
-        BotCommand(command="mute", description="[Админ] Заглушить"),
-        BotCommand(command="unmute", description="[Админ] Разглушить"),
-        BotCommand(command="ban", description="[Админ] Заблокировать"),
-        BotCommand(command="unban", description="[Админ] Разблокировать"),
-        BotCommand(command="stats", description="[Админ] Статистика группы"),
-        BotCommand(command="logs", description="[Админ] Последние логи"),
-        BotCommand(command="settings", description="[Админ] Настройки группы"),
-        BotCommand(command="setwelcome", description="[Админ] Задать приветствие"),
-        BotCommand(command="setrules", description="[Админ] Задать правила"),
-        BotCommand(command="badword", description="[Админ] Управление чёрным списком"),
-        BotCommand(command="allowdomain", description="[Админ] Добавить домен в белый список"),
-    ])
-
-    log.info("🚀 PipBot is live! Press Ctrl+C to stop.")
-
-    try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-    finally:
-        scheduler.shutdown()
-        await bot.session.close()
-        log.info("Bot stopped.")
-
-
-if __name__ == "__main__":
+if name == "__main__":
     asyncio.run(main())
